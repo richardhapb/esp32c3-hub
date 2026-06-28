@@ -1,0 +1,7 @@
+[target.riscv32imc-esp-espidf]
+linker = "ldproxy"
+
+[env]
+ESP_IDF_VERSION = { value = "v5.4", force = true }
+# Disambiguate the riscv32imc-esp-espidf target (maps to [esp32c3, esp32c2]).
+MCU = { value = "esp32c3", force = true }

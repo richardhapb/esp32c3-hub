@@ -1,0 +1,23 @@
+/target
+
+# Managed ESP-IDF install + toolchains, cloned by esp-idf-sys on first esp32
+# build (hundreds of MB; regenerate with scripts/esp32-build.sh).
+/.embuild/
+
+# Generated visualization artifacts (regenerate with `cargo run --bin record`)
+/viz/
+
+# Rung 2 bench run logs (regenerate with scripts/rung2-one-robot-debug.sh)
+/runs/
+
+.env
+/telemetry.ndjson
+/tools/espnow-gateway/firmware/build/
+# The rust-analyzer cargo shim (.ra/home/bin/cargo) is tracked; everything else
+# under .ra (symlinked registry/git/config, caches) is generated/self-healing.
+/.ra/*
+!/.ra/home/
+/.ra/home/*
+!/.ra/home/bin/
+/.ra/home/bin/*
+!/.ra/home/bin/cargo

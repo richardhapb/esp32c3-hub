@@ -1,0 +1,13 @@
+[package]
+name = "esp32c3-hub"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+esp-idf-svc = "0.52.1"
+
+[build-dependencies]
+# Forwards esp-idf-sys's linker args to the binary (see build.rs). The `espidf`
+# feature is required for the `embuild::espidf` module to exist on host builds
+# (where esp-idf-sys isn't in the graph to enable it via unification).
+embuild = { version = "0.33.1", features = ["espidf"] }

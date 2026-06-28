@@ -1,0 +1,96 @@
+-- make rust-analyzer analyze the ESP32-C3 firmware target so hover /
+-- goto / completion work inside `#[cfg(feature = "esp32")]` blocks (e.g. the
+-- esp-idf-svc code in massbee-agent/src/main.rs).
+--
+-- Mirrors the canonical firmware build from .cargo/config.toml:
+--   env -u IDF_PATH cargo +esp build -Z build-std=std,panic_abort \
+--     --target riscv32imc-esp-espidf
+--
+-- Three things are needed beyond the obvious feature/target settings:
+--
+--  1. IDF_PATH unset — ~/.zprofile exports the global ESP-IDF v6.1 path, but
+--     esp-idf-sys here pins v5.4 (.cargo/config.toml, force=true) and can't
+--     unset IDF_PATH from there. Unsetting it in nvim's env keeps the
+--     rust-analyzer child off the inherited v6.1 install.
+--
+--  2. RUSTUP_TOOLCHAIN=esp — the riscv std + build-std come from the esp
+--     toolchain (the `+esp` in the build command). (Mason's rust-analyzer binary
+--     itself isn't in that toolchain, so you'll see a harmless
+--     "rust-analyzer is unavailable for the active toolchain → falling back to
+--     mason" line; that's expected.)
+--
+--  3. CARGO_HOME -> .ra/home (the cargo shim). This project's cargo
+--     (1.95.0-nightly) does NOT accept `--lockfile-path` on `cargo metadata`,
+--     but rust-analyzer passes it. When metadata-with-deps fails, RA silently
+--     falls back to `--no-deps`: no resolved features, so the esp32 cfg goes
+--     inactive and hover returns "No information available". RA runs
+--     `$CARGO_HOME/bin/cargo` for metadata (ignoring $CARGO and PATH), so
+--     .ra/home/bin/cargo is a shim that strips `--lockfile-path` and forwards to
+--     the real cargo; registry/git are symlinked so nothing re-downloads.
+--     Remove this (and .ra/home) once cargo or rust-analyzer is fixed upstream.
+
+local jp = vim.fs.joinpath
+local root = vim.fn.getcwd()
+local cargo_home = jp(root, ".ra", "home")
+
+-- Make sure the shim cargo home is wired up (idempotent): bin/cargo is the
+-- committed shim; registry/git/config are symlinked to the real ~/.cargo so
+-- nothing re-downloads. Self-healing so this works after a fresh checkout.
+do
+  local real = jp(vim.env.HOME, ".cargo")
+  vim.fn.mkdir(cargo_home, "p")
+  for _, name in ipairs({ "registry", "git", "config.toml", "credentials.toml" }) do
+    local src, dst = jp(real .. name), jp(cargo_home, name)
+    if vim.uv.fs_stat(src) and not vim.uv.fs_lstat(dst) then
+      vim.uv.fs_symlink(src, dst)
+    end
+  end
+end
+
+vim.env.IDF_PATH = nil
+
+local env = { RUSTUP_TOOLCHAIN = "esp", CARGO_HOME = cargo_home }
+
+vim.lsp.config("rust_analyzer", {
+  cmd_env = env,
+  settings = {
+    ["rust-analyzer"] = {
+      cargo = {
+        target = "riscv32imc-esp-espidf",
+        extraArgs = { "-Zbuild-std=std,panic_abort" },
+        extraEnv = env,
+        buildScripts = { enable = true },
+      },
+      check = {
+        extraArgs = { "-Zbuild-std=std,panic_abort" },
+      },
+    },
+  },
+})
+
+-- rust-analyzer attaches at startup with the global config (before this file
+-- runs at VimEnter). We must restart it to pick up the esp config + cmd_env --
+-- but only once it has actually attached, otherwise stop() finds nothing and the
+-- global-config client wins the race. So poll for the client, then stop and
+-- re-trigger attach (which re-reads the merged config above).
+local function restart_rust_analyzer(tries)
+  tries = tries or 0
+  local clients = vim.lsp.get_clients({ name = "rust_analyzer" })
+  if #clients == 0 then
+    if tries > 40 then return end -- give up after ~20s
+    return vim.defer_fn(function() restart_rust_analyzer(tries + 1) end, 500)
+  end
+  for _, client in ipairs(clients) do
+    client:stop(true)
+  end
+  vim.defer_fn(function()
+    vim.lsp.enable("rust_analyzer")
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+      if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].filetype == "rust" then
+        vim.api.nvim_exec_autocmds("FileType", { buffer = buf })
+      end
+    end
+  end, 1000)
+end
+
+restart_rust_analyzer()

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# massbee cargo shim — see ../../.nvim for the full rationale.
+#
+# rust-analyzer runs `$CARGO_HOME/bin/cargo metadata ... --lockfile-path <p>`,
+# but this project's cargo (1.95.0-nightly) does not accept `--lockfile-path`
+# on `cargo metadata`. RA then silently falls back to `--no-deps`, which drops
+# resolved features so the `esp32` cfg goes inactive and hover/goto break.
+#
+# This shim strips `--lockfile-path` (both `--lockfile-path PATH` and
+# `--lockfile-path=PATH` forms) and forwards everything else to the real
+# rustup cargo proxy, which honours RUSTUP_TOOLCHAIN=esp. CARGO_HOME stays
+# pointed here; registry/git/config are symlinked to ~/.cargo so nothing
+# re-downloads.
+#
+# Remove this (and .ra/home) once cargo or rust-analyzer is fixed upstream.
+
+real_cargo="${HOME}/.cargo/bin/cargo"
+
+args=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --lockfile-path)
+      shift 2 ;;        # drop the flag and its value
+    --lockfile-path=*)
+      shift ;;          # drop the combined form
+    *)
+      args+=("$1"); shift ;;
+  esac
+done
+
+exec "$real_cargo" "${args[@]}"
