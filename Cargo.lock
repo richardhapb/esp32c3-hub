@@ -603,6 +603,7 @@ dependencies = [
 name = "esp32c3-hub"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "embuild",
  "esp-idf-svc",
  "log",
