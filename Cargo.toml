@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 esp-idf-svc = "0.52.1"
+log = "0.4.33"
 
 [build-dependencies]
 # Forwards esp-idf-sys's linker args to the binary (see build.rs). The `espidf`
