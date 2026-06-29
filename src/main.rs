@@ -1,4 +1,5 @@
 use core::convert::TryInto;
+use esp_idf_svc::sys::EspError;
 use esp_idf_svc::{hal::gpio::PinDriver, http::Method, io::Write};
 use std::sync::{Arc, Mutex};
 
@@ -44,34 +45,44 @@ fn main() -> anyhow::Result<()> {
 fn connect_wifi(wifi: &mut BlockingWifi<EspWifi<'static>>) -> anyhow::Result<()> {
     let wifi_configuration: Configuration = Configuration::Client(ClientConfiguration {
         ssid: SSID.try_into().unwrap(),
-        bssid: None,
-        auth_method: AuthMethod::WPA2Personal,
+        auth_method: AuthMethod::WPA3Personal,
         password: PASSWORD.try_into().unwrap(),
-        channel: None,
         ..Default::default()
     });
 
     wifi.set_configuration(&wifi_configuration)?;
     wifi.start()?;
     info!("Wifi started");
-    wifi.connect()?;
+
+    with_retry(|| wifi.connect(), 100)?;
     info!("Wifi connected");
-    const MAX_ATTEMPT: usize = 10;
-    const RETRY_INTERVAL_SEC: u64 = 10;
+
+    with_retry(|| wifi.wait_netif_up(), 100)?;
+    info!("Wifi netif up");
+
+    Ok(())
+}
+
+fn with_retry<F>(mut func: F, max_attempts: usize) -> Result<(), EspError>
+where
+    F: FnMut() -> Result<(), EspError>,
+{
+    const RETRY_INTERVAL_SEC: u64 = 5;
     let mut attempt = 1;
-    while let Err(e) = wifi.wait_netif_up() {
-        if attempt > MAX_ATTEMPT {
+
+    while let Err(e) = func() {
+        if attempt > max_attempts {
             error!("max attempts reached, dropping connection");
             error!("{e}");
-            break;
+            return Err(e);
         }
         warn!(
-            "error connecting to wifi: {e}, attempt {attempt}/{MAX_ATTEMPT}, retrying in {RETRY_INTERVAL_SEC}s"
+            "error connecting to wifi: {e}, attempt {attempt}/{max_attempts}, retrying in {RETRY_INTERVAL_SEC}s"
         );
         attempt += 1;
         std::thread::sleep(std::time::Duration::from_secs(RETRY_INTERVAL_SEC));
+        info!("Retrying...");
     }
-    info!("Wifi netif up");
 
     Ok(())
 }
