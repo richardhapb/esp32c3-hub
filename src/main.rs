@@ -45,7 +45,7 @@ fn main() -> anyhow::Result<()> {
 fn connect_wifi(wifi: &mut BlockingWifi<EspWifi<'static>>) -> anyhow::Result<()> {
     let wifi_configuration: Configuration = Configuration::Client(ClientConfiguration {
         ssid: SSID.try_into().unwrap(),
-        auth_method: AuthMethod::WPA3Personal,
+        auth_method: AuthMethod::WPA2WPA3Personal,
         password: PASSWORD.try_into().unwrap(),
         ..Default::default()
     });
@@ -53,6 +53,17 @@ fn connect_wifi(wifi: &mut BlockingWifi<EspWifi<'static>>) -> anyhow::Result<()>
     wifi.set_configuration(&wifi_configuration)?;
     wifi.start()?;
     info!("Wifi started");
+
+    // Cap WiFi TX power to ~8.5 dBm (34 * 0.25 dBm). At full power (20 dBm) the
+    // transmit-current spike browns out this board's 3.3V rail mid-handshake, so
+    // association fails intermittently ("auth -> init" loop). A smaller spike
+    // lets the handshake complete reliably; with strong RSSI the lower range is
+    // a non-issue. The proper fix is a stiffer 5V supply / better USB cable —
+    // raise or remove this cap once powered adequately. Must be called after
+    // wifi.start().
+    unsafe {
+        esp_idf_svc::sys::esp_wifi_set_max_tx_power(34);
+    }
 
     with_retry(|| wifi.connect(), 100)?;
     info!("Wifi connected");
