@@ -45,7 +45,7 @@ fn main() -> anyhow::Result<()> {
 fn connect_wifi(wifi: &mut BlockingWifi<EspWifi<'static>>) -> anyhow::Result<()> {
     let wifi_configuration: Configuration = Configuration::Client(ClientConfiguration {
         ssid: SSID.try_into().unwrap(),
-        auth_method: AuthMethod::WPA2WPA3Personal,
+        auth_method: AuthMethod::WPA2Personal,
         password: PASSWORD.try_into().unwrap(),
         ..Default::default()
     });
