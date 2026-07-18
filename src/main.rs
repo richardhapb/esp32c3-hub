@@ -119,10 +119,21 @@ fn run_server(gp: Gpio3<'static>) -> anyhow::Result<EspHttpServer<'static>> {
             driver.set_low().ok();
         }
         let msg: &[u8] = if *on { b"Lamp on" } else { b"Lamp off" };
-        req.into_ok_response()
-            .unwrap()
-            .write_all(msg)
-            .map_err(|_| ())
+
+        // Send an explicit Content-Length response. into_ok_response() emits a
+        // chunked response whose terminating 0-length chunk never reaches the
+        // wire here, so clients hang until they time out (and the Go proxy then
+        // falls back to its 202 path). A fixed length lets the client read the
+        // body and finish immediately.
+        let len = msg.len().to_string();
+        let headers = [
+            ("Content-Type", "text/plain"),
+            ("Content-Length", len.as_str()),
+            ("Connection", "close"),
+        ];
+        let mut resp = req.into_response(200, Some("OK"), &headers).map_err(|_| ())?;
+        resp.write_all(msg).map_err(|_| ())?;
+        resp.flush().map_err(|_| ())
     })?;
 
     Ok(server)
